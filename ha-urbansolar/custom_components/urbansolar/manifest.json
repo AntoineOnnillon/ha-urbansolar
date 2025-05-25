@@ -1,11 +1,14 @@
 {
   "domain": "urbansolar",
   "name": "Urban Solar",
-  "version": "1.0.0",
-  "documentation": "https://github.com/yourusername/ha-urbansolar",
+  "version": "0.0.1",
+  "documentation": "https://github.com/antoineonnillon/ha-urbansolar",
   "requirements": [],
   "dependencies": [],
-  "codeowners": ["@yourusername"],
+  "codeowners": [
+    "@antoineonnillon"
+  ],
   "iot_class": "local_polling",
-  "integration_type": "hub"
+  "integration_type": "hub",
+  "config_flow": true
 }
