@@ -2,8 +2,10 @@ from homeassistant.helpers.entity import Entity
 
 from .const import (
     DOMAIN,
-    CONF_INDEX_INJECTION_SENSOR,
+    CONF_START_INDEX_BASE,
     CONF_START_INDEX_INJECTION,
+    CONF_INDEX_BASE_SENSOR,
+    CONF_INDEX_INJECTION_SENSOR,
     CONF_INDEX_OUT_BATTERY_ENERGY,
     CONF_INDEX_IN_BATTERY_ENERGY,
     CONF_INDEX_VIRTUAL_BASE,
@@ -82,6 +84,7 @@ class UrbanSolarSensor(Entity):
     async def async_update(self):
         """Met à jour l'état du capteur."""
         config = self.hass.data[DOMAIN][self.config_entry.entry_id]
+
         if self._unique_id == CONF_INDEX_IN_BATTERY_ENERGY:
             sensor_entity_id = config[CONF_INDEX_INJECTION_SENSOR]
             start_index = config[CONF_START_INDEX_INJECTION]
@@ -93,7 +96,45 @@ class UrbanSolarSensor(Entity):
                     self._state = None
             else:
                 self._state = None
-        # ...autres sensors...
+
+        elif self._unique_id == CONF_INDEX_VIRTUAL_BASE:
+            # Récupère la valeur du sensor de base
+            base_entity_id = config[CONF_INDEX_BASE_SENSOR]
+            # ou adapte selon ton entity_id réel
+            out_battery_entity_id = "sensor.index_out_battery_energy"
+            base_state = self.hass.states.get(base_entity_id)
+            out_battery_state = self.hass.states.get(out_battery_entity_id)
+            if (
+                base_state and base_state.state not in (
+                    None, "unknown", "unavailable")
+                and out_battery_state and out_battery_state.state not in (None, "unknown", "unavailable")
+            ):
+                try:
+                    self._state = float(base_state.state) - \
+                        float(out_battery_state.state)
+                except ValueError:
+                    self._state = None
+            else:
+                self._state = None
+
+        elif self._unique_id == CONF_CAPACITY_BATTERY:
+            in_battery_entity_id = "sensor.index_in_battery_energy"
+            out_battery_entity_id = "sensor.index_out_battery_energy"
+            in_battery_state = self.hass.states.get(in_battery_entity_id)
+            out_battery_state = self.hass.states.get(out_battery_entity_id)
+            if (
+                in_battery_state and in_battery_state.state not in (
+                    None, "unknown", "unavailable")
+                and out_battery_state and out_battery_state.state not in (None, "unknown", "unavailable")
+            ):
+                try:
+                    value = float(in_battery_state.state) - \
+                        float(out_battery_state.state)
+                    self._state = max(0, value)
+                except ValueError:
+                    self._state = 0
+            else:
+                self._state = None
 
     @property
     def device_info(self):
