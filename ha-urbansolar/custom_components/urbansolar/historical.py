@@ -59,13 +59,14 @@ class UrbanSolarVirtualBaseHistoricalSensor(PollUpdateMixin, HistoricalSensor, S
         await super().async_added_to_hass()
 
     async def async_update_historical(self):
-        # Récupère l'historique du sensor de base sur 7 jours
+        # Récupère tout l'historique du sensor de base
+        from datetime import datetime
+
+        start = datetime(1970, 1, 1)  # Date de début très ancienne
         now = datetime.now()
-        start = now - timedelta(days=7)
         base_entity_id = self.config_entry.data[CONF_INDEX_BASE_SENSOR]
-        # <-- Utilisation du token de la config
         token = self.config_entry.data[CONF_HA_TOKEN]
-        url = f"http://localhost:8123/api/history/period/{start.isoformat()}?filter_entity_id={base_entity_id}"
+        url = f"http://localhost:8123/api/history/period/{start.isoformat()}?filter_entity_id={base_entity_id}&end_time={now.isoformat()}"
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",

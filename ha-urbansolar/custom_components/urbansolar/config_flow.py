@@ -37,12 +37,7 @@ class UrbanSolarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "device_class": "energy"
                     }
                 }),
-                vol.Required(CONF_HA_TOKEN): selector({
-                    "text": {
-                        "multiline": False,
-                        "mode": "password"
-                    }
-                }),
+                vol.Required(CONF_HA_TOKEN): str,
             })
 
         )
