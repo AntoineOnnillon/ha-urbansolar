@@ -12,12 +12,13 @@ from .const import (
 
 SENSOR_TYPES = [
     (CONF_INDEX_OUT_BATTERY_ENERGY,
-     "Index Out Battery Energy", "kWh", "energy", "total_increasing"),
+     "Index Out Battery Energy", "kWh", "energy", {"state_class": "total_increasing"}),
     (CONF_INDEX_IN_BATTERY_ENERGY, "Index In Battery Energy",
-     "kWh", "energy", "total_increasing"),
-    (CONF_CAPACITY_BATTERY, "Capacity Battery", "kWh", "energy", "total"),
+     "kWh", "energy", {"state_class": "total_increasing"}),
+    (CONF_CAPACITY_BATTERY, "Capacity Battery", "kWh",
+     "energy_storage", {"state_class": "total"}),
     (CONF_INDEX_VIRTUAL_BASE, "Virtual Consumption Energy",
-     "kWh", "energy", "total_increasing"),
+     "kWh", "energy", {"state_class": "total_increasing"}),
 ]
 
 
@@ -28,23 +29,23 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hass.data[DOMAIN][config_entry.entry_id] = config_entry.data
 
     sensors = []
-    for sensor_id, name, unit, device_class, state_class in SENSOR_TYPES:
+    for sensor_id, name, unit, device_class, attributes in SENSOR_TYPES:
         sensors.append(UrbanSolarSensor(
-            hass, config_entry, name, sensor_id, unit, device_class, state_class))
+            hass, config_entry, name, sensor_id, unit, device_class, attributes))
     async_add_entities(sensors, True)
 
 
 class UrbanSolarSensor(Entity):
     """Representation of an Urban Solar Sensor."""
 
-    def __init__(self, hass, config_entry, name, unique_id, unit, device_class, state_class):
+    def __init__(self, hass, config_entry, name, unique_id, unit, device_class, attributes):
         self.hass = hass
         self.config_entry = config_entry
         self._name = name
         self._unique_id = unique_id
         self._unit = unit
         self._device_class = device_class
-        self._state_class = state_class
+        self._attributes = attributes
         self._state = None
 
     @property
@@ -71,23 +72,12 @@ class UrbanSolarSensor(Entity):
         return self._device_class
 
     @property
-    def state_class(self):
-        return self._state_class
-
-    @property
-    def precision(self):
-        """Return the precision of the sensor."""
-        if self._device_class == "energy":
-            return 3  # kWh
-        return None  # Pas de précision spécifique pour d'autres types
+    def extra_state_attributes(self):
+        return self._attributes
 
     def update(self):
         # Ici, tu dois mettre à jour self._state avec la vraie valeur
         pass
-
-    @property
-    def extra_state_attributes(self):
-        return {}
 
     async def async_update(self):
         """Met à jour l'état du capteur."""
