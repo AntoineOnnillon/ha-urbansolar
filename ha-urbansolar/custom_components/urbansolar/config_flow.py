@@ -9,6 +9,7 @@ from .const import (
     CONF_START_INDEX_INJECTION,
     CONF_INDEX_BASE_SENSOR,
     CONF_INDEX_INJECTION_SENSOR,
+    CONF_HA_TOKEN,
 )
 
 
@@ -34,6 +35,12 @@ class UrbanSolarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "entity": {
                         "domain": "sensor",
                         "device_class": "energy"
+                    }
+                }),
+                vol.Required(CONF_HA_TOKEN): selector({
+                    "text": {
+                        "multiline": False,
+                        "mode": "password"
                     }
                 }),
             })
