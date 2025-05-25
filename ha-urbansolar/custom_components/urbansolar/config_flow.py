@@ -5,6 +5,8 @@ from homeassistant.const import UnitOfEnergy, UnitOfPower
 from typing import Any, Dict
 from .const import (
     DOMAIN,
+    CONF_START_INDEX_BASE,
+    CONF_START_INDEX_INJECTION,
     CONF_INDEX_BASE_SENSOR,
     CONF_INDEX_INJECTION_SENSOR,
 )
@@ -20,6 +22,8 @@ class UrbanSolarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({
+                vol.Required(CONF_START_INDEX_BASE, default=0): vol.All(vol.Coerce(float), vol.Range(min=0)),
+                vol.Required(CONF_START_INDEX_INJECTION, default=0): vol.All(vol.Coerce(float), vol.Range(min=0)),
                 vol.Required(CONF_INDEX_BASE_SENSOR): selector({
                     "entity": {
                         "domain": "sensor",
