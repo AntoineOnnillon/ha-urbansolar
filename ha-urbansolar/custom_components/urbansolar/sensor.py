@@ -2,25 +2,15 @@ from homeassistant.helpers.entity import Entity
 
 from .const import (
     DOMAIN,
-    CONF_START_INDEX_BASE,
-    CONF_START_INDEX_INJECTION,
     CONF_INDEX_BASE_SENSOR,
     CONF_INDEX_INJECTION_SENSOR,
-    CONF_INDEX_OUT_BATTERY_ENERGY,
-    CONF_INDEX_IN_BATTERY_ENERGY,
-    CONF_INDEX_VIRTUAL_BASE,
     CONF_CAPACITY_BATTERY,
+    CONF_START_BATTERY_ENERGY,
 )
 
 SENSOR_TYPES = [
-    (CONF_INDEX_OUT_BATTERY_ENERGY,
-     "Index Out Battery Energy", "kWh", "energy", {"state_class": "total_increasing"}),
-    (CONF_INDEX_IN_BATTERY_ENERGY, "Index In Battery Energy",
-     "kWh", "energy", {"state_class": "total_increasing"}),
-    (CONF_CAPACITY_BATTERY, "Capacity Battery", "kWh",
+    (CONF_CAPACITY_BATTERY, "Capacity Battery", "kW",
      "energy_storage", {"state_class": "total"}),
-    (CONF_INDEX_VIRTUAL_BASE, "Virtual Consumption Energy",
-     "kWh", "energy", {"state_class": "total_increasing"}),
 ]
 
 
@@ -48,7 +38,11 @@ class UrbanSolarSensor(Entity):
         self._unit = unit
         self._device_class = device_class
         self._attributes = attributes
-        self._state = None
+        # Initialisation de la batterie à la création
+        if self._unique_id == CONF_CAPACITY_BATTERY:
+            self._state = config_entry.data.get(CONF_START_BATTERY_ENERGY, 0.0)
+        else:
+            self._state = None
 
     @property
     def name(self):
@@ -85,56 +79,42 @@ class UrbanSolarSensor(Entity):
         """Met à jour l'état du capteur."""
         config = self.hass.data[DOMAIN][self.config_entry.entry_id]
 
-        if self._unique_id == CONF_INDEX_IN_BATTERY_ENERGY:
-            sensor_entity_id = config[CONF_INDEX_INJECTION_SENSOR]
-            start_index = config[CONF_START_INDEX_INJECTION]
-            state = self.hass.states.get(sensor_entity_id)
-            if state and state.state not in (None, "unknown", "unavailable"):
-                try:
-                    self._state = float(state.state) - float(start_index)
-                except ValueError:
-                    self._state = None
-            else:
-                self._state = None
-
-        elif self._unique_id == CONF_INDEX_VIRTUAL_BASE:
-            # Récupère la valeur du sensor de base
+        if self._unique_id == CONF_CAPACITY_BATTERY:
+            injection_entity_id = config[CONF_INDEX_INJECTION_SENSOR]
             base_entity_id = config[CONF_INDEX_BASE_SENSOR]
-            # ou adapte selon ton entity_id réel
-            out_battery_entity_id = "sensor.index_out_battery_energy"
+            injection_state = self.hass.states.get(injection_entity_id)
             base_state = self.hass.states.get(base_entity_id)
-            out_battery_state = self.hass.states.get(out_battery_entity_id)
-            if (
-                base_state and base_state.state not in (
-                    None, "unknown", "unavailable")
-                and out_battery_state and out_battery_state.state not in (None, "unknown", "unavailable")
-            ):
-                try:
-                    self._state = float(base_state.state) - \
-                        float(out_battery_state.state)
-                except ValueError:
-                    self._state = None
-            else:
-                self._state = None
 
-        elif self._unique_id == CONF_CAPACITY_BATTERY:
-            in_battery_entity_id = "sensor.index_in_battery_energy"
-            out_battery_entity_id = "sensor.index_out_battery_energy"
-            in_battery_state = self.hass.states.get(in_battery_entity_id)
-            out_battery_state = self.hass.states.get(out_battery_entity_id)
-            if (
-                in_battery_state and in_battery_state.state not in (
-                    None, "unknown", "unavailable")
-                and out_battery_state and out_battery_state.state not in (None, "unknown", "unavailable")
-            ):
-                try:
-                    value = float(in_battery_state.state) - \
-                        float(out_battery_state.state)
-                    self._state = max(0, value)
-                except ValueError:
-                    self._state = 0
-            else:
-                self._state = None
+            # Initialisation des variables persistantes
+            if not hasattr(self, "_last_injection") or self._last_injection is None:
+                self._last_injection = None
+            if not hasattr(self, "_last_base") or self._last_base is None:
+                self._last_base = None
+            if self._state is None:
+                self._state = 0.0
+
+            # Récupération des valeurs actuelles
+            try:
+                injection = float(injection_state.state) if injection_state and injection_state.state not in ("unknown", "unavailable") else None
+                base = float(base_state.state) if base_state and base_state.state not in ("unknown", "unavailable") else None
+            except ValueError:
+                injection = None
+                base = None
+
+            # Calcul du delta et mise à jour de la batterie
+            if injection is not None and base is not None:
+                if self._last_injection is not None and self._last_base is not None:
+                    delta_injection = injection - self._last_injection
+                    delta_base = base - self._last_base
+                    # On ne prend que les variations positives
+                    if delta_injection > 0:
+                        self._state += delta_injection
+                    if delta_base > 0:
+                        self._state -= delta_base
+                    # Empêche la batterie de descendre sous 0
+                    self._state = max(0, self._state)
+                self._last_injection = injection
+                self._last_base = base
 
     @property
     def device_info(self):
