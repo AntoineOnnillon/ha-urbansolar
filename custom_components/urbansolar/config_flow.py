@@ -3,6 +3,7 @@ from homeassistant import config_entries
 from homeassistant.helpers.selector import selector
 from homeassistant.const import UnitOfEnergy, UnitOfPower
 from typing import Any, Dict
+
 from .const import (
     DOMAIN,
     CONF_INDEX_BASE_SENSOR,
@@ -11,8 +12,9 @@ from .const import (
 )
 
 
-class UrbanSolarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class UrbanSolarConfigFlow(config_entries.ConfigFlow):
     VERSION = 1
+    DOMAIN = DOMAIN
 
     async def async_step_user(self, user_input=None):
         if user_input is not None:
