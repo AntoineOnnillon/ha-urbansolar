@@ -16,9 +16,9 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 SENSOR_TYPES = [
-     (CONF_INDEX_BATTERY_IN, "Battery In", "kWh",
+    (CONF_INDEX_BATTERY_IN, "Battery In", "kWh",
         "energy", {"state_class": "total_increasing"}),
-     (CONF_INDEX_BATTERY_OUT, "Battery Out", "kWh",
+    (CONF_INDEX_BATTERY_OUT, "Battery Out", "kWh",
         "energy", {"state_class": "total_increasing"}),
     (CONF_CAPACITY_BATTERY, "Capacity Battery", "kW",
      "energy_storage", {"state_class": "total"}),
@@ -67,11 +67,11 @@ class UrbanSolarSensor(RestoreEntity, Entity):  # Hérite de RestoreEntity
                     self._state = 0.0
             else:
                 self._state = 0.0
+
         config = self.hass.data[DOMAIN][self.config_entry.entry_id]
         if self._unique_id == CONF_CAPACITY_BATTERY:
             battery_in_entity_id = config.get(CONF_INDEX_BATTERY_IN)
             battery_out_entity_id = config.get(CONF_INDEX_BATTERY_OUT)
-            _LOGGER.debug("Listening for changes: battery_in=%s, battery_out=%s", battery_in_entity_id, battery_out_entity_id)
             if battery_in_entity_id:
                 async_track_state_change(
                     self.hass, battery_in_entity_id, self._trigger_update
@@ -80,12 +80,9 @@ class UrbanSolarSensor(RestoreEntity, Entity):  # Hérite de RestoreEntity
                 async_track_state_change(
                     self.hass, battery_out_entity_id, self._trigger_update
                 )
-        
-        _LOGGER.debug("Sensor %s added with initial state: %s", self._unique_id, self._state)
 
     async def _trigger_update(self, entity_id, old_state, new_state):
         """Déclenche une mise à jour de l'état."""
-        _LOGGER.debug("Trigger update for %s due to %s change: %s -> %s", self._unique_id, entity_id, old_state, new_state)
         await self.async_update_ha_state(force_refresh=True)
 
     def __init__(self, hass, config_entry, name, unique_id, unit, device_class, attributes):
@@ -143,7 +140,7 @@ class UrbanSolarSensor(RestoreEntity, Entity):  # Hérite de RestoreEntity
         """Met à jour l'état du capteur."""
         config = self.hass.data[DOMAIN][self.config_entry.entry_id]
 
-        _LOGGER.debug("Updating %s with config: %s", self._unique_id, config)
+        # _LOGGER.debug("Updating %s with config: %s", self._unique_id, config)
         if self._unique_id == CONF_CAPACITY_BATTERY:
             # Récupération de la capacité de la batterie
             start_battery_capacity = config.get(CONF_START_BATTERY_ENERGY, 0.0)
@@ -181,10 +178,11 @@ class UrbanSolarSensor(RestoreEntity, Entity):  # Hérite de RestoreEntity
             if base is not None:
                 if hasattr(self, "_last_base") and not self._last_base is None:
                     delta_base = base - self._last_base
-                    if battery_capacity is not None and delta_base > 0 and delta_base <= battery_capacity:
-                        self._state += delta_base
-                    elif battery_capacity is not None:
-                        self._state += battery_capacity
+                    if battery_capacity is not None and delta_base > 0:
+                        if delta_base <= battery_capacity:
+                            self._state += delta_base
+                        else:
+                            self._state += battery_capacity
                 self._last_base = base
         elif self._unique_id == CONF_INDEX_BATTERY_IN:
             injection_entity_id = config.get(CONF_INDEX_INJECTION_SENSOR)
