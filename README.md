@@ -16,6 +16,12 @@ L'intégration `ha-urbansolar` permet d'interagir avec les systèmes solaires ur
 ## Configuration
 Pour configurer l'intégration, accédez à l'interface utilisateur de Home Assistant et suivez les étapes de configuration. Vous serez guidé à travers le processus de connexion à votre système solaire urbain.
 
+Nouvelles options:
+- Choix du tarif: `Base (HB)` ou `HP/HC`
+- Puissance souscrite (kVA)
+
+L'intégration expose des capteurs de prix TTC (energie et acheminement) automatiquement mis a jour depuis le PDF "Particuliers" sur la page des tarifs Urban Solar.
+
 ## Utilisation
 Une fois l'intégration configurée, vous pourrez voir les capteurs disponibles dans votre tableau de bord Home Assistant. Vous pourrez surveiller la production d'énergie, la consommation et d'autres données pertinentes.
 

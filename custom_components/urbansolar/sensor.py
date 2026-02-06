@@ -1,6 +1,6 @@
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.restore_state import RestoreEntity  # Ajout
-from homeassistant.helpers.event import async_track_state_change
+from homeassistant.helpers.event import async_track_state_change, async_track_time_change
 import logging
 
 from .const import (
@@ -11,7 +11,17 @@ from .const import (
     CONF_INDEX_BATTERY_IN,
     CONF_INDEX_BATTERY_OUT,
     CONF_CAPACITY_BATTERY,
+    CONF_TARIFF_OPTION,
+    SENSOR_TARIFF_ACH_HC_TTC,
+    SENSOR_TARIFF_ACH_HP_TTC,
+    SENSOR_TARIFF_ACH_TTC,
+    SENSOR_TARIFF_ENERGY_HC_TTC,
+    SENSOR_TARIFF_ENERGY_HP_TTC,
+    SENSOR_TARIFF_ENERGY_TTC,
+    TARIFF_OPTION_HPHC,
+    UNIT_EUR_PER_KWH,
 )
+from .tariffs import TariffData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,6 +32,18 @@ SENSOR_TYPES = [
         "energy", {"state_class": "total_increasing"}),
     (CONF_CAPACITY_BATTERY, "Capacity Battery", "kW",
      "energy_storage", {"state_class": "total"}),
+]
+
+TARIFF_SENSOR_TYPES_BASE = [
+    (SENSOR_TARIFF_ENERGY_TTC, "Tarif Energie TTC", UNIT_EUR_PER_KWH, None, {"state_class": "measurement"}),
+    (SENSOR_TARIFF_ACH_TTC, "Tarif Acheminement TTC", UNIT_EUR_PER_KWH, None, {"state_class": "measurement"}),
+]
+
+TARIFF_SENSOR_TYPES_HPHC = [
+    (SENSOR_TARIFF_ENERGY_HP_TTC, "Tarif Energie HP TTC", UNIT_EUR_PER_KWH, None, {"state_class": "measurement"}),
+    (SENSOR_TARIFF_ENERGY_HC_TTC, "Tarif Energie HC TTC", UNIT_EUR_PER_KWH, None, {"state_class": "measurement"}),
+    (SENSOR_TARIFF_ACH_HP_TTC, "Tarif Acheminement HP TTC", UNIT_EUR_PER_KWH, None, {"state_class": "measurement"}),
+    (SENSOR_TARIFF_ACH_HC_TTC, "Tarif Acheminement HC TTC", UNIT_EUR_PER_KWH, None, {"state_class": "measurement"}),
 ]
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
@@ -35,6 +57,46 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         sensor = UrbanSolarSensor(hass, config_entry, name, sensor_id, unit, device_class, attributes)
         sensors.append(sensor)
         hass.data[DOMAIN][sensor_id] = sensor  # Stocke l'entité dans les données de l'intégration
+
+    tariff_option = config_entry.data.get(CONF_TARIFF_OPTION)
+    if tariff_option:
+        hass.data[DOMAIN].setdefault("tariff_data", {})
+        tariff_data = TariffData(hass, config_entry)
+        hass.data[DOMAIN]["tariff_data"][config_entry.entry_id] = tariff_data
+        tariff_sensors = (
+            TARIFF_SENSOR_TYPES_HPHC
+            if tariff_option == TARIFF_OPTION_HPHC
+            else TARIFF_SENSOR_TYPES_BASE
+        )
+        created_tariff_sensors = []
+        for sensor_id, name, unit, device_class, attributes in tariff_sensors:
+            sensor = UrbanSolarTariffSensor(
+                hass,
+                config_entry,
+                name,
+                sensor_id,
+                unit,
+                device_class,
+                attributes,
+                tariff_data,
+            )
+            sensors.append(sensor)
+            created_tariff_sensors.append(sensor)
+
+        async def _monthly_tariff_update(now):
+            await tariff_data.async_update(force=True)
+            for entity in created_tariff_sensors:
+                await entity.async_update_ha_state(force_refresh=True)
+
+        remove_listener = async_track_time_change(
+            hass,
+            _monthly_tariff_update,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+        )
+        config_entry.async_on_unload(remove_listener)
     async_add_entities(sensors, True)
 
 class UrbanSolarSensor(RestoreEntity, Entity):  # Hérite de RestoreEntity
@@ -212,6 +274,70 @@ class UrbanSolarSensor(RestoreEntity, Entity):  # Hérite de RestoreEntity
     @property
     def device_info(self):
         """Retourne les infos de l'appareil pour rattacher les entités à un device."""
+        return {
+            "identifiers": {(DOMAIN, self.config_entry.entry_id)},
+            "name": "Urban Solar",
+            "manufacturer": "Urban Solar",
+            "model": "Battery Integration",
+            "entry_type": "service",
+        }
+
+
+class UrbanSolarTariffSensor(Entity):
+    """Representation of an Urban Solar Tariff Sensor."""
+
+    def __init__(self, hass, config_entry, name, unique_id, unit, device_class, attributes, tariff_data):
+        self.hass = hass
+        self.config_entry = config_entry
+        self._name = name
+        self._unique_id = unique_id
+        self._unit = unit
+        self._device_class = device_class
+        self._attributes = attributes or {}
+        self._tariff_data = tariff_data
+        self._state = None
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def unique_id(self):
+        return self._unique_id
+
+    @property
+    def state(self):
+        if self._state is None:
+            return None
+        return round(self._state, 4)
+
+    @property
+    def unit_of_measurement(self):
+        return self._unit
+
+    @property
+    def device_class(self):
+        return self._device_class
+
+    @property
+    def extra_state_attributes(self):
+        return self._attributes
+
+    async def async_update(self):
+        await self._tariff_data.async_update()
+        self._state = self._tariff_data.values.get(self._unique_id)
+        self._attributes = {
+            **(self._attributes or {}),
+            "tariff_option": self._tariff_data.tariff_option,
+            "subscribed_power_kva": self._tariff_data.subscribed_power,
+            "source_url": self._tariff_data.source_url,
+            "effective_date": self._tariff_data.effective_date,
+            "last_update": self._tariff_data.last_update,
+            "last_error": self._tariff_data.last_error,
+        }
+
+    @property
+    def device_info(self):
         return {
             "identifiers": {(DOMAIN, self.config_entry.entry_id)},
             "name": "Urban Solar",
