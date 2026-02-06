@@ -1,6 +1,7 @@
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.restore_state import RestoreEntity  # Ajout
 from homeassistant.helpers.event import async_track_state_change, async_track_time_change
+from homeassistant.core import callback
 import logging
 
 from .const import (
@@ -83,15 +84,20 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             sensors.append(sensor)
             created_tariff_sensors.append(sensor)
 
-        async def _monthly_tariff_update(now):
+        async def _run_monthly_tariff_update():
             await tariff_data.async_update(force=True)
             for entity in created_tariff_sensors:
                 await entity.async_update_ha_state(force_refresh=True)
 
+        @callback
+        def _monthly_tariff_update(now):
+            if now.day != 1:
+                return
+            hass.async_create_task(_run_monthly_tariff_update())
+
         remove_listener = async_track_time_change(
             hass,
             _monthly_tariff_update,
-            day=1,
             hour=0,
             minute=0,
             second=0,

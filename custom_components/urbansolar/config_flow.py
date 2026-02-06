@@ -22,6 +22,12 @@ class UrbanSolarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         if user_input is not None:
+            # Ensure subscribed power is stored as an int even if the selector returns a string.
+            if CONF_SUBSCRIBED_POWER in user_input:
+                try:
+                    user_input[CONF_SUBSCRIBED_POWER] = int(user_input[CONF_SUBSCRIBED_POWER])
+                except (TypeError, ValueError):
+                    user_input[CONF_SUBSCRIBED_POWER] = 6
             return self.async_create_entry(title="Urban Solar", data=user_input)
 
         return self.async_show_form(
@@ -37,10 +43,10 @@ class UrbanSolarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "mode": "dropdown",
                     }
                 }),
-                vol.Required(CONF_SUBSCRIBED_POWER, default=6): selector({
+                vol.Required(CONF_SUBSCRIBED_POWER, default=str(6)): selector({
                     "select": {
                         "options": [
-                            {"label": f"{value} kVA", "value": value}
+                            {"label": f"{value} kVA", "value": str(value)}
                             for value in TARIFF_POWER_OPTIONS
                         ],
                         "mode": "dropdown",
