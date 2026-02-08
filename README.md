@@ -1,4 +1,4 @@
-# ha-urbansolar Integration
+# ha-urbansolar Integrations
 
 ## Description
 L'intégration `ha-urbansolar` émule une **batterie virtuelle** à partir de deux index du compteur :
@@ -12,6 +12,11 @@ Elle calcule :
 - une **capacité de batterie virtuelle**.
 
 Elle expose aussi des capteurs de **tarifs TTC** (énergie et acheminement) mis à jour depuis le PDF Urban Solar.
+
+L'intégration `energy_price_history` permet de **reconstruire l'historique du coût** (EUR cumulés) à partir :
+- d'un capteur d'énergie (kWh),
+- d'un capteur coût existant (EUR),
+- d'un tableau de périodes de prix (EUR/kWh, en UTC).
 
 ## Installation
 1. Clonez le dépôt dans le répertoire `custom_components` de votre installation Home Assistant.
@@ -64,6 +69,19 @@ Si vous activez l’option “Rebuild historique”, l’intégration :
 - supprime les anciennes statistiques des capteurs dérivés,
 - recalcule `sum` cumulés à partir des deltas,
 - réécrit les statistiques compatibles avec le panneau Énergie.
+
+## energy_price_history
+**Objectif** : recalculer l'historique du **coût cumulé** (EUR) pour le panneau Énergie.
+
+Configuration :
+- **Capteur énergie** (device_class = `energy`)
+- **Capteur coût** (EUR, capteur existant utilisé par le panneau Énergie)
+- **Périodes de prix** (JSON simple `from/to/price`, UTC)
+- **Rebuild historique** (recalcule et réécrit les statistiques de coût)
+
+Important :
+- Ce module **ne crée pas de capteur**.
+- Il **écrit dans la base Recorder** : faites une sauvegarde avant.
 
 ## Limites actuelles
 - Le contrat `HP/HC` n'est pas encore pris en charge.

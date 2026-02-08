@@ -1,0 +1,11 @@
+{
+  "domain": "energy_price_history",
+  "name": "Energy Price History",
+  "version": "0.1",
+  "documentation": "https://github.com/antoineonnillon/ha-urbansolar",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": ["@antoineonnillon"],
+  "integration_type": "service",
+  "config_flow": true
+}

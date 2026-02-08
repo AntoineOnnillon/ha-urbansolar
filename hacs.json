@@ -3,6 +3,5 @@
     "country": "FR",
     "homeassistant": "2023.0.0",
     "render_readme": true,
-    "zip_release": false,
-    "filename": "custom_components/urbansolar/__init__.py"
+    "zip_release": false
 }
