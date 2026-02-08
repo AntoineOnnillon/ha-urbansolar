@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import sqlite3
+import time
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
@@ -22,6 +23,9 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+# Slower batch settings to reduce MariaDB lock pressure on slow instances.
+REBUILD_BATCH_SIZE = 300
+REBUILD_BATCH_SLEEP_S = 0.1
 
 
 @dataclass
@@ -376,20 +380,51 @@ def _rebuild_sqlalchemy(
     dialect_name = getattr(dialect, "name", None)
     sum_col = "`sum`" if dialect_name in ("mysql", "mariadb") else "sum"
 
-    with engine.begin() as conn:
-        base_meta_id = _get_meta_id_sa(conn, base_entity_id, create=False)
-        injection_meta_id = _get_meta_id_sa(conn, injection_entity_id, create=False)
-        if base_meta_id is None or injection_meta_id is None:
-            _LOGGER.error("Missing statistics meta for base/injection; history rebuild skipped")
-            return None
+    base_meta_id = _get_meta_id_sa_engine(engine, base_entity_id, create=False)
+    injection_meta_id = _get_meta_id_sa_engine(engine, injection_entity_id, create=False)
+    if base_meta_id is None or injection_meta_id is None:
+        _LOGGER.error("Missing statistics meta for base/injection; history rebuild skipped")
+        return None
 
-        battery_in_meta_id = _get_meta_id_sa(conn, battery_in_entity_id, create=True)
-        battery_out_meta_id = _get_meta_id_sa(conn, battery_out_entity_id, create=True)
-        capacity_meta_id = _get_meta_id_sa(
-            conn, capacity_entity_id, create=True, unit="kW", unit_class="power"
-        )
-        base_emulated_meta_id = _get_meta_id_sa(conn, base_emulated_entity_id, create=True)
-        injection_emulated_meta_id = _get_meta_id_sa(conn, injection_emulated_entity_id, create=True)
+    battery_in_meta_id = _get_meta_id_sa_engine(engine, battery_in_entity_id, create=True)
+    battery_out_meta_id = _get_meta_id_sa_engine(engine, battery_out_entity_id, create=True)
+    capacity_meta_id = _get_meta_id_sa_engine(
+        engine, capacity_entity_id, create=True, unit="kW", unit_class="power"
+    )
+    base_emulated_meta_id = _get_meta_id_sa_engine(engine, base_emulated_entity_id, create=True)
+    injection_emulated_meta_id = _get_meta_id_sa_engine(engine, injection_emulated_entity_id, create=True)
+
+    derived_meta_ids = (
+        battery_in_meta_id,
+        battery_out_meta_id,
+        capacity_meta_id,
+        base_emulated_meta_id,
+        injection_emulated_meta_id,
+    )
+
+    conn = engine.connect()
+    try:
+        with conn.begin():
+            conn.execute(
+                text("DELETE FROM statistics WHERE metadata_id IN (:a,:b,:c,:d,:e)"),
+                {
+                    "a": derived_meta_ids[0],
+                    "b": derived_meta_ids[1],
+                    "c": derived_meta_ids[2],
+                    "d": derived_meta_ids[3],
+                    "e": derived_meta_ids[4],
+                },
+            )
+            conn.execute(
+                text("DELETE FROM statistics_short_term WHERE metadata_id IN (:a,:b,:c,:d,:e)"),
+                {
+                    "a": derived_meta_ids[0],
+                    "b": derived_meta_ids[1],
+                    "c": derived_meta_ids[2],
+                    "d": derived_meta_ids[3],
+                    "e": derived_meta_ids[4],
+                },
+            )
 
         base_rows = conn.execute(
             text(
@@ -413,34 +448,6 @@ def _rebuild_sqlalchemy(
             row[0]: (row[1] if row[1] is not None else 0.0, row[2]) for row in injection_rows
         }
 
-        derived_meta_ids = (
-            battery_in_meta_id,
-            battery_out_meta_id,
-            capacity_meta_id,
-            base_emulated_meta_id,
-            injection_emulated_meta_id,
-        )
-        conn.execute(
-            text("DELETE FROM statistics WHERE metadata_id IN (:a,:b,:c,:d,:e)"),
-            {
-                "a": derived_meta_ids[0],
-                "b": derived_meta_ids[1],
-                "c": derived_meta_ids[2],
-                "d": derived_meta_ids[3],
-                "e": derived_meta_ids[4],
-            },
-        )
-        conn.execute(
-            text("DELETE FROM statistics_short_term WHERE metadata_id IN (:a,:b,:c,:d,:e)"),
-            {
-                "a": derived_meta_ids[0],
-                "b": derived_meta_ids[1],
-                "c": derived_meta_ids[2],
-                "d": derived_meta_ids[3],
-                "e": derived_meta_ids[4],
-            },
-        )
-
         battery_in_total = max(start_capacity, 0.0)
         battery_out_total = 0.0
         base_emulated_total = 0.0
@@ -452,11 +459,28 @@ def _rebuild_sqlalchemy(
         sum_injection_emulated = 0.0
 
         rows_to_insert = []
+        inserted_rows = 0
         last_base_state = None
         last_injection_state = None
         last_base_sum = None
         last_injection_sum = None
         injection_emulated_state = None
+
+        insert_stmt = text(
+            f"INSERT INTO statistics (created_ts, metadata_id, start_ts, state, {sum_col}) "
+            "VALUES (:created_ts, :metadata_id, :start_ts, :state, :sum_value)"
+        )
+
+        def _flush_rows():
+            nonlocal rows_to_insert, inserted_rows
+            if not rows_to_insert:
+                return
+            with conn.begin():
+                conn.execute(insert_stmt, rows_to_insert)
+            inserted_rows += len(rows_to_insert)
+            rows_to_insert = []
+            if REBUILD_BATCH_SLEEP_S > 0:
+                time.sleep(REBUILD_BATCH_SLEEP_S)
 
         for start_ts, base_sum, base_state in base_rows:
             if base_sum is None or base_sum < 0:
@@ -548,6 +572,9 @@ def _rebuild_sqlalchemy(
                 ]
             )
 
+            if len(rows_to_insert) >= REBUILD_BATCH_SIZE:
+                _flush_rows()
+
             if base_state is not None:
                 last_base_state = base_state
             if inj_state is not None:
@@ -555,13 +582,7 @@ def _rebuild_sqlalchemy(
             last_base_sum = base_sum
             last_injection_sum = inj_sum
 
-        conn.execute(
-            text(
-                f"INSERT INTO statistics (created_ts, metadata_id, start_ts, state, {sum_col}) "
-                "VALUES (:created_ts, :metadata_id, :start_ts, :state, :sum_value)"
-            ),
-            rows_to_insert,
-        )
+        _flush_rows()
 
         return RebuildResult(
             battery_in=battery_in_total,
@@ -570,8 +591,10 @@ def _rebuild_sqlalchemy(
             base_emulated=base_emulated_total,
             last_base_state=last_base_state,
             last_injection_state=last_injection_state,
-            rows=len(rows_to_insert),
+            rows=inserted_rows,
         )
+    finally:
+        conn.close()
 
 
 def _get_meta_id_sa(
@@ -582,6 +605,7 @@ def _get_meta_id_sa(
     unit_class: str = "energy",
 ) -> Optional[int]:
     from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
 
     row = conn.execute(
         text("SELECT id FROM statistics_meta WHERE statistic_id = :sid"),
@@ -593,21 +617,90 @@ def _get_meta_id_sa(
     if not create:
         return None
 
-    result = conn.execute(
-        text(
-            "INSERT INTO statistics_meta (statistic_id, source, unit_of_measurement, unit_class, has_mean, has_sum, name, mean_type) "
-            "VALUES (:sid, :source, :uom, :uclass, :has_mean, :has_sum, :name, :mean_type)"
-        ),
-        {
-            "sid": statistic_id,
-            "source": "recorder",
-            "uom": unit,
-            "uclass": unit_class,
-            "has_mean": None,
-            "has_sum": 1,
-            "name": None,
-            "mean_type": 0,
-        },
+    params = {
+        "sid": statistic_id,
+        "source": "recorder",
+        "uom": unit,
+        "uclass": unit_class,
+        "has_mean": None,
+        "has_sum": 1,
+        "name": None,
+        "mean_type": 0,
+    }
+    stmt = text(
+        "INSERT INTO statistics_meta (statistic_id, source, unit_of_measurement, unit_class, has_mean, has_sum, name, mean_type) "
+        "VALUES (:sid, :source, :uom, :uclass, :has_mean, :has_sum, :name, :mean_type)"
     )
-    last_id = getattr(result, "lastrowid", None)
-    return int(last_id) if last_id is not None else None
+
+    for attempt in range(5):
+        try:
+            result = conn.execute(stmt, params)
+            last_id = getattr(result, "lastrowid", None)
+            return int(last_id) if last_id is not None else None
+        except OperationalError as exc:
+            orig = getattr(exc, "orig", None)
+            code = getattr(orig, "args", [None])[0] if orig is not None else None
+            # 1205 = lock wait timeout, 1213 = deadlock
+            if code in (1205, 1213) and attempt < 4:
+                time.sleep(0.5 * (2 ** attempt))
+                continue
+            raise
+
+    return None
+
+
+def _get_meta_id_sa_engine(
+    engine,
+    statistic_id: str,
+    create: bool,
+    unit: str = "kWh",
+    unit_class: str = "energy",
+) -> Optional[int]:
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+
+    params = {
+        "sid": statistic_id,
+        "source": "recorder",
+        "uom": unit,
+        "uclass": unit_class,
+        "has_mean": None,
+        "has_sum": 1,
+        "name": None,
+        "mean_type": 0,
+    }
+    stmt_select = text("SELECT id FROM statistics_meta WHERE statistic_id = :sid")
+    stmt_insert = text(
+        "INSERT IGNORE INTO statistics_meta (statistic_id, source, unit_of_measurement, unit_class, has_mean, has_sum, name, mean_type) "
+        "VALUES (:sid, :source, :uom, :uclass, :has_mean, :has_sum, :name, :mean_type)"
+    )
+
+    for attempt in range(6):
+        try:
+            with engine.connect() as conn:
+                try:
+                    conn.exec_driver_sql("SET SESSION innodb_lock_wait_timeout=120")
+                except Exception:
+                    pass
+
+                row = conn.execute(stmt_select, {"sid": statistic_id}).fetchone()
+                if row:
+                    return int(row[0])
+                if not create:
+                    return None
+
+                conn.execute(stmt_insert, params)
+                conn.commit()
+
+                row = conn.execute(stmt_select, {"sid": statistic_id}).fetchone()
+                if row:
+                    return int(row[0])
+        except OperationalError as exc:
+            orig = getattr(exc, "orig", None)
+            code = getattr(orig, "args", [None])[0] if orig is not None else None
+            if code in (1205, 1213) and attempt < 5:
+                time.sleep(0.5 * (2 ** attempt))
+                continue
+            raise
+
+    return None

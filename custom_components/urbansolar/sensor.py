@@ -27,7 +27,6 @@ from .const import (
     UNIT_EUR_PER_KWH,
 )
 from .tariffs import TariffData
-from .history import async_rebuild_history
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -232,41 +231,10 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hass.async_create_task(_recompute_from_sources())
 
     if config_entry.data.get(CONF_REBUILD_HISTORY):
-        async def _run_rebuild():
-            result = await async_rebuild_history(hass, config_entry)
-            if result:
-                # Align live sensor states with rebuilt totals
-                sensor_battery_in = hass.data[DOMAIN].get(CONF_INDEX_BATTERY_IN)
-                sensor_battery_out = hass.data[DOMAIN].get(CONF_INDEX_BATTERY_OUT)
-                sensor_capacity = hass.data[DOMAIN].get(CONF_CAPACITY_BATTERY)
-                sensor_base_emulated = hass.data[DOMAIN].get(CONF_INDEX_BASE_EMULATED)
-                if sensor_battery_in:
-                    sensor_battery_in._state = result.battery_in
-                    sensor_battery_in._last_injection = result.last_injection_state
-                    sensor_battery_in.async_write_ha_state()
-                if sensor_battery_out:
-                    sensor_battery_out._state = result.battery_out
-                    sensor_battery_out._last_base = result.last_base_state
-                    sensor_battery_out.async_write_ha_state()
-                if sensor_capacity:
-                    sensor_capacity._state = result.capacity
-                    sensor_capacity.async_write_ha_state()
-                if sensor_base_emulated:
-                    sensor_base_emulated._state = result.base_emulated
-                    sensor_base_emulated._last_base = result.last_base_state
-                    sensor_base_emulated._last_injection = result.last_injection_state
-                    sensor_base_emulated.async_write_ha_state()
-                sensor_injection_emulated = hass.data[DOMAIN].get(CONF_INDEX_INJECTION_EMULATED)
-                if sensor_injection_emulated and result.last_injection_state is not None:
-                    sensor_injection_emulated._state = result.last_injection_state
-                    sensor_injection_emulated.async_write_ha_state()
-
-            # Disable rebuild flag to avoid running at every restart
-            data = dict(config_entry.data)
-            data[CONF_REBUILD_HISTORY] = False
-            hass.config_entries.async_update_entry(config_entry, data=data)
-
-        hass.async_create_task(_run_rebuild())
+        _LOGGER.info(
+            "Rebuild history is enabled for this entry. "
+            "Run the on-demand service 'urbansolar.rebuild_history' to start it."
+        )
 
 class UrbanSolarSensor(RestoreEntity, Entity):  # Hérite de RestoreEntity
     """Representation of an Urban Solar Sensor."""
