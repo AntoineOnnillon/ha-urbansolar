@@ -7,6 +7,9 @@ CONF_INDEX_INJECTION_SENSOR = "index_injection_sensor"
 CONF_INDEX_BATTERY_IN = "battery_in_energy"
 CONF_INDEX_BATTERY_OUT = "battery_out_energy"
 CONF_CAPACITY_BATTERY = "battery_capacity"
+CONF_INDEX_BASE_EMULATED = "index_base_emulated"
+CONF_INDEX_INJECTION_EMULATED = "index_injection_emulated"
+CONF_REBUILD_HISTORY = "rebuild_history"
 
 # Tariffs / pricing configuration
 CONF_TARIFF_OPTION = "tariff_option"
