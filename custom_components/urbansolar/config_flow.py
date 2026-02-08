@@ -11,6 +11,7 @@ from .const import (
     CONF_START_BATTERY_ENERGY,
     CONF_TARIFF_OPTION,
     CONF_SUBSCRIBED_POWER,
+    CONF_REBUILD_HISTORY,
     TARIFF_OPTION_BASE,
     TARIFF_OPTION_HPHC,
     TARIFF_POWER_OPTIONS,
@@ -63,6 +64,9 @@ class UrbanSolarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "domain": "sensor",
                         "device_class": "energy"
                     }
+                }),
+                vol.Required(CONF_REBUILD_HISTORY, default=False): selector({
+                    "boolean": {}
                 }),
             })
 

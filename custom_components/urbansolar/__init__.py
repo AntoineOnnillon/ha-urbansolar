@@ -39,6 +39,5 @@ async def async_migrate_entry(hass: core.HomeAssistant, entry: config_entries.Co
         data = dict(entry.data)
         data.setdefault(CONF_TARIFF_OPTION, TARIFF_OPTION_BASE)
         data.setdefault(CONF_SUBSCRIBED_POWER, 6)
-        entry.version = 2
         hass.config_entries.async_update_entry(entry, data=data, version=2)
     return True
