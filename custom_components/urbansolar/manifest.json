@@ -3,7 +3,9 @@
   "name": "Urban Solar",
   "version": "0.2",
   "documentation": "https://github.com/antoineonnillon/ha-urbansolar",
-  "requirements": [],
+  "requirements": [
+    "pdfplumber==0.11.0"
+  ],
   "dependencies": [],
   "codeowners": [
     "@antoineonnillon"
