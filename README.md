@@ -1,32 +1,75 @@
 # ha-urbansolar Integration
 
 ## Description
-L'intégration `ha-urbansolar` permet d'interagir avec les systèmes solaires urbains. Elle fournit des capteurs pour surveiller la production d'énergie, la consommation et d'autres métriques pertinentes.
+L'intégration `ha-urbansolar` émule une **batterie virtuelle** à partir de deux index du compteur :
+- **Index Base** (consommation réseau)
+- **Index Injection** (énergie injectée)
+
+Elle calcule :
+- un **index réseau émulé** (Base Emulated),
+- un **index batterie consommée** (Battery Out),
+- un **index injection** (Injection Emulated),
+- une **capacité de batterie virtuelle**.
+
+Elle expose aussi des capteurs de **tarifs TTC** (énergie et acheminement) mis à jour depuis le PDF Urban Solar.
 
 ## Installation
 1. Clonez le dépôt dans le répertoire `custom_components` de votre installation Home Assistant.
    ```bash
-   git clone https://github.com/votre-utilisateur/ha-urbansolar.git
+   git clone https://github.com/AntoineOnnillon/ha-urbansolar.git
    ```
-
-2. Assurez-vous que les dépendances sont installées. Ajoutez les dépendances listées dans `requirements.txt` à votre environnement Python.
-
-3. Redémarrez Home Assistant pour que l'intégration soit reconnue.
+2. Redémarrez Home Assistant.
 
 ## Configuration
-Pour configurer l'intégration, accédez à l'interface utilisateur de Home Assistant et suivez les étapes de configuration. Vous serez guidé à travers le processus de connexion à votre système solaire urbain.
+Configuration via l'interface Home Assistant.
 
-Nouvelles options:
-- Choix du tarif: `Base (HB)` ou `HP/HC`
-- Puissance souscrite (kVA)
+Options disponibles :
+- **Tarif** : `Base (HB)` (le contrat `HP/HC` n'est pas encore pris en charge)
+- **Puissance souscrite** (kVA)
+- **Capteur Index Base** (device_class = `energy`)
+- **Capteur Index Injection** (device_class = `energy`)
+- **Rebuild historique** (recalcule les statistiques à partir des index)
 
-L'intégration expose des capteurs de prix TTC (energie et acheminement) automatiquement mis a jour depuis le PDF "Particuliers" sur la page des tarifs Urban Solar.
+## Capteurs créés
+Les entités sont proposées avec des suffixes explicites :
+- `sensor.battery_in_energy` : crédit total (injection)
+- `sensor.battery_out_energy` : batterie consommée
+- `sensor.battery_capacity` : capacité virtuelle
+- `sensor.base_emulated_energy` : consommation réseau émulée
+- `sensor.injection_emulated_energy` : injection émulée
 
-## Utilisation
-Une fois l'intégration configurée, vous pourrez voir les capteurs disponibles dans votre tableau de bord Home Assistant. Vous pourrez surveiller la production d'énergie, la consommation et d'autres données pertinentes.
+## Calculs
+Les calculs sont strictement basés sur les deltas d’index :
+- **Battery In** = delta d’injection positif
+- **Battery Out** ≤ delta base et ≤ capacité disponible
+- **Capacity** = Battery In - Battery Out (jamais négative)
+- **Base Emulated** = Index Base - Battery Out (jamais négatif)
+
+## Panneau Énergie (conseillé)
+Pour séparer les prix réseau et acheminement, utilisez **2 sources “grid”** :
+
+1) **Réseau (HB)**  
+   `flow_from = sensor.base_emulated_energy`
+
+2) **Acheminement**  
+   `flow_from = sensor.battery_out_energy`
+
+Et pour l’injection :
+- `flow_to = sensor.injection_emulated_energy`
+
+Important : **ne pas configurer de batterie** dans le panneau Énergie si vous utilisez cette structure, sinon double comptage.
+
+## Rebuild historique
+Si vous activez l’option “Rebuild historique”, l’intégration :
+- supprime les anciennes statistiques des capteurs dérivés,
+- recalcule `sum` cumulés à partir des deltas,
+- réécrit les statistiques compatibles avec le panneau Énergie.
+
+## Limites actuelles
+- Le contrat `HP/HC` n'est pas encore pris en charge.
 
 ## Contribuer
-Les contributions sont les bienvenues ! N'hésitez pas à soumettre des demandes de tirage ou à signaler des problèmes.
+Les contributions sont bienvenues ! N'hésitez pas à soumettre des PR ou signaler des problèmes.
 
-## License
-Ce projet est sous licence MIT. Veuillez consulter le fichier LICENSE pour plus de détails.
+## Licence
+Ce projet est sous licence MIT. Voir le fichier `LICENSE`.

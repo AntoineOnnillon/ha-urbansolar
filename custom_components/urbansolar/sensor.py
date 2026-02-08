@@ -55,6 +55,14 @@ SENSOR_TYPES = [
         "energy", {"state_class": "total_increasing"}),
 ]
 
+SUGGESTED_OBJECT_IDS = {
+    CONF_INDEX_BATTERY_IN: "battery_in_energy",
+    CONF_INDEX_BATTERY_OUT: "battery_out_energy",
+    CONF_CAPACITY_BATTERY: "battery_capacity",
+    CONF_INDEX_BASE_EMULATED: "base_emulated_energy",
+    CONF_INDEX_INJECTION_EMULATED: "injection_emulated_energy",
+}
+
 TARIFF_SENSOR_TYPES_BASE = [
     (SENSOR_TARIFF_ENERGY_TTC, "Tarif Energie TTC", UNIT_EUR_PER_KWH, None, {"state_class": "measurement"}),
     (SENSOR_TARIFF_ACH_TTC, "Tarif Acheminement TTC", UNIT_EUR_PER_KWH, None, {"state_class": "measurement"}),
@@ -361,6 +369,10 @@ class UrbanSolarSensor(RestoreEntity, Entity):  # Hérite de RestoreEntity
     @property
     def extra_state_attributes(self):
         return self._attributes
+
+    @property
+    def suggested_object_id(self):
+        return SUGGESTED_OBJECT_IDS.get(self._unique_id)
 
     @property
     def should_poll(self):
